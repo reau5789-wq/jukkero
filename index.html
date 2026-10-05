@@ -31,6 +31,7 @@
 </head><body>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<script src="config.js"></script>
 <script src="lib/leaflet.js"></script>
 <style>
 /* required styles */
@@ -831,6 +832,7 @@ nav.tabs .in{display:grid;grid-template-columns:repeat(4,1fr);width:100%;max-wid
 .cm .cx{width:18px;height:22px;flex:none}
 .cm .nm{display:none;box-shadow:0 1px 3px rgba(0,0,0,.25);font:700 12px var(--f-body);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:1px 5px;box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .show-names .cm .nm{display:inline-block}
+.cm.ap .cx{opacity:.45}.cm.ap .nm{opacity:.7;border-style:dashed}
 .cm.sel .nm{display:inline-block;border-color:var(--lamp);background:var(--lamp-soft)}
 .cm.mine .nm{display:inline-block;border-color:var(--deep)}
 .bub{display:inline-block;width:max-content;transform:translate(-50%,-50%);background:var(--deep);color:var(--surface);border-radius:999px;padding:3px 9px;font:700 12px var(--f-body);white-space:nowrap;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -1288,31 +1290,78 @@ function locate(c){
 }
 function km(a,b){const R=6371,t=Math.PI/180,dl=(b.lat-a.lat)*t,dn=(b.lng-a.lng)*t;const x=Math.sin(dl/2)**2+Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 const CROSS='<svg class="cx" viewBox="0 0 18 22"><path d="M9 1v20M3 7h12" stroke="var(--surface)" stroke-width="5.5" stroke-linecap="round"/><path d="M9 1.5v19M3.5 7h11" stroke="var(--lamp)" stroke-width="3" stroke-linecap="round"/></svg>';
-let MAP=null,churchLayer=null,bubLayer=null,meMarker=null,sggLayer=null,dongLayer=null;
+// ---- 지도 엔진: 카카오 키가 있으면 카카오맵 + 정확한 주소 좌표, 없으면 OpenStreetMap + 동네 단위 대략 위치 ----
+let MAP=null,V=null;
 function themeColor(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||"#888"}
+function loadKakao(){
+  const key=String(window.KAKAO_KEY||"").trim();
+  if(!key)return Promise.resolve(false);
+  return new Promise(res=>{
+    const t=setTimeout(()=>res(false),8000);
+    const s=document.createElement("script");
+    s.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
+    s.onerror=()=>{clearTimeout(t);res(false)};
+    s.onload=()=>{try{kakao.maps.load(()=>{clearTimeout(t);res(!!(kakao.maps.services&&kakao.maps.services.Geocoder))})}catch(e){clearTimeout(t);res(false)}};
+    document.head.appendChild(s);
+  });
+}
+function overlayEl(html,onclick){const d=document.createElement("div");d.innerHTML=html;const el=d.firstElementChild;if(onclick)el.addEventListener("click",e=>{e.stopPropagation();onclick()});return el}
+function kakaoView(el,lat,lng,z){
+  const K=kakao.maps,lv=z=>Math.max(1,Math.min(14,20-z));
+  const m=new K.Map(el,{center:new K.LatLng(lat,lng),level:lv(z)});
+  m.addControl(new K.ZoomControl(),K.ControlPosition.RIGHT);
+  let items=[],me=null,circ=null;
+  return {kind:"kakao",
+    zoom:()=>20-m.getLevel(),
+    setView:(a,b,z)=>{m.setLevel(lv(z));m.setCenter(new K.LatLng(a,b))},
+    getCenter:()=>{const c=m.getCenter();return{lat:c.getLat(),lng:c.getLng()}},
+    bounds:()=>{const b=m.getBounds(),sw=b.getSouthWest(),ne=b.getNorthEast(),dy=(ne.getLat()-sw.getLat())*.1,dx=(ne.getLng()-sw.getLng())*.1;return{s:sw.getLat()-dy,w:sw.getLng()-dx,n:ne.getLat()+dy,e:ne.getLng()+dx}},
+    clear:()=>{items.forEach(o=>o.setMap(null));items=[]},
+    add:(a,b,html,onclick,top)=>{const o=new K.CustomOverlay({position:new K.LatLng(a,b),content:overlayEl(html,onclick),xAnchor:0,yAnchor:0,zIndex:top?5:1,clickable:true});o.setMap(m);items.push(o)},
+    me:h=>{if(me)me.setMap(null);if(circ){circ.setMap(null);circ=null}
+      me=new K.CustomOverlay({position:new K.LatLng(h.lat,h.lng),content:overlayEl('<div class="me"></div>'),xAnchor:0,yAnchor:0,zIndex:9});me.setMap(m);
+      if(h.acc&&h.acc<2000){circ=new K.Circle({center:new K.LatLng(h.lat,h.lng),radius:h.acc,strokeWeight:1,strokeColor:"#2D7FF9",strokeOpacity:.6,fillColor:"#2D7FF9",fillOpacity:.08});circ.setMap(m)}},
+    onMove:f=>K.event.addListener(m,"idle",f),
+    invalidateSize:()=>m.relayout()};
+}
+function leafletView(el,lat,lng,z){
+  const m=L.map(el,{zoomControl:true,attributionControl:true,minZoom:6,maxZoom:19}).setView([lat,lng],z);
+  m.attributionControl.setPrefix("");
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).addTo(m);
+  const layer=L.layerGroup().addTo(m);let me=null,circ=null;
+  return {kind:"leaflet",
+    zoom:()=>m.getZoom(),
+    setView:(a,b,z)=>m.setView([a,b],z),
+    getCenter:()=>{const c=m.getCenter();return{lat:c.lat,lng:c.lng}},
+    bounds:()=>{const b=m.getBounds().pad(.1);return{s:b.getSouth(),w:b.getWest(),n:b.getNorth(),e:b.getEast()}},
+    clear:()=>layer.clearLayers(),
+    add:(a,b,html,onclick,top)=>{const mk=L.marker([a,b],{keyboard:true,zIndexOffset:top?500:0,icon:L.divIcon({className:"",iconSize:null,html})});if(onclick)mk.on("click",onclick);mk.addTo(layer)},
+    me:h=>{if(me)me.remove();if(circ){circ.remove();circ=null}
+      me=L.marker([h.lat,h.lng],{interactive:false,zIndexOffset:1000,icon:L.divIcon({className:"",iconSize:null,html:'<div class="me"></div>'})}).addTo(m);
+      if(h.acc&&h.acc<2000)circ=L.circle([h.lat,h.lng],{radius:h.acc,color:"#2D7FF9",weight:1,fillColor:"#2D7FF9",fillOpacity:.08,interactive:false}).addTo(m)},
+    onMove:f=>m.on("moveend zoomend",f),
+    invalidateSize:()=>m.invalidateSize()};
+}
+let mapStarting=false;
 async function initMap(){
   if(MAP){MAP.invalidateSize();drawChurches();return}
-  if(!window.L){$("mapCount").textContent="지도를 불러오지 못했어요.";return}
-  const h0=S.prefs.home;
-  MAP=L.map("map",{zoomControl:true,attributionControl:true,minZoom:6,maxZoom:19}).setView(h0?[h0.lat,h0.lng]:[36.35,127.8],h0?15:7);
-  MAP.attributionControl.setPrefix("");
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).addTo(MAP);
-  churchLayer=L.layerGroup().addTo(MAP);bubLayer=L.layerGroup().addTo(MAP);
-  MAP.on("moveend zoomend",drawChurches);
+  if(mapStarting)return;mapStarting=true;
+  const h0=S.prefs.home,lat=h0?h0.lat:36.35,lng=h0?h0.lng:127.8,z=h0?15:7,el=$("map");
+  $("mapCount").textContent="지도를 여는 중…";
+  const hasKakao=await loadKakao();
+  try{V=hasKakao?kakaoView(el,lat,lng,z):(window.L?leafletView(el,lat,lng,z):null)}catch(e){V=window.L?leafletView(el,lat,lng,z):null}
+  mapStarting=false;
+  if(!V){$("mapCount").textContent="지도를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.";return}
+  MAP=V;
+  if(V.kind==="kakao"){GEOC=new kakao.maps.services.Geocoder();PLACES=new kakao.maps.services.Places()}
+  V.onMove(drawChurches);
   if(h0)setMe(h0,false);
   // 현재 위치를 쓰는 중이면(또는 아직 위치가 없으면) 열 때마다 GPS로 새로 찾습니다.
   if(!h0||h0.label==="현재 위치")locateMe(true);
   drawChurches();
 }
-let accCircle=null,watchId=null;
-function setMe(h,fly=true){
-  if(!MAP)return;
-  if(meMarker)meMarker.remove();
-  if(accCircle){accCircle.remove();accCircle=null}
-  meMarker=L.marker([h.lat,h.lng],{interactive:false,zIndexOffset:1000,icon:L.divIcon({className:"",iconSize:null,html:'<div class="me"></div>'})}).addTo(MAP);
-  if(h.acc&&h.acc<2000)accCircle=L.circle([h.lat,h.lng],{radius:h.acc,color:"#2D7FF9",weight:1,fillColor:"#2D7FF9",fillOpacity:.08,interactive:false}).addTo(MAP);
-  if(fly)MAP.setView([h.lat,h.lng],15);
-}
+let watchId=null;
+function setMe(h,fly=true){if(!V)return;V.me(h);if(fly)V.setView(h.lat,h.lng,15)}
 function locateMe(recenter){
   const m=$("locMsg");
   const fail=err=>{m.hidden=false;m.textContent=(err&&err.code===1)?"위치 권한이 꺼져 있어요. 휴대폰 설정 → 애플리케이션 → 주께로(또는 Chrome) → 권한에서 위치를 ‘허용’으로 바꾸거나, 옆 칸에 동네 이름을 넣어 주세요.":"현재 위치를 가져오지 못했어요. 휴대폰의 위치(GPS)를 켜고 다시 눌러 주세요. 또는 옆 칸에 동네 이름(예: 화도읍)을 넣어 주세요."};
@@ -1324,28 +1373,78 @@ function locateMe(recenter){
     if(watchId==null)watchId=navigator.geolocation.watchPosition(p=>{const h=S.prefs.home;if(h&&h.label!=="현재 위치")return;ok(p,false)},()=>{},{enableHighAccuracy:true,maximumAge:10000});
   }catch(e){fail()}
 }
-function mapChurches(){const d=S.denom;return S.churches.filter(c=>{locate(c);return c.lat!=null&&(!d||c.denom===d)})}
+
+// ---- 주소 → 정확한 좌표 (카카오 주소 검색, 휴대폰에 저장해 두고 다시 쓰기) ----
+let GEOC=null,PLACES=null;const GEO_KEY="jk-geo-v1";let GEO={};
+try{GEO=JSON.parse(localStorage.getItem(GEO_KEY)||"{}")||{}}catch(e){GEO={}}
+let geoSaveT=null;function saveGeo(){clearTimeout(geoSaveT);geoSaveT=setTimeout(()=>{try{localStorage.setItem(GEO_KEY,JSON.stringify(GEO))}catch(e){}},1500)}
+const geoId=c=>c._gk||(c._gk=c.id+":"+Math.floor(hash(c.name+"|"+c.address)*1e7));
+function applyGeo(c){if(c._geo||!c.approx)return;const g=GEO[geoId(c)];if(Array.isArray(g)){c.lat=g[0];c.lng=g[1];c.approx=null;c._geo=1}}
+function geoAddr(c){
+  let a=String(c.address||"").replace(/\([^)]*\)?/g," ").split(",")[0];
+  a=a.replace(/\s+(\d+번길)/g,"$1").replace(/\s+(지하|B)?\d+층.*$/,"").replace(/\s+[\dA-Za-z-]+호.*$/,"").replace(/\s+/g," ").trim();
+  if(!a)return "";
+  const sg=String(c.sigungu||"").trim();
+  const pre=[c.sido,sg].filter(Boolean).join(" ");
+  return (sg&&normS(a).startsWith(normS(sg)))||(c.sido&&a.startsWith(c.sido))?a:(pre+" "+a).trim();
+}
+const geoQ=[],geoQueued=new Set();let geoBusy=0,geoRedrawT=null;
+function geoDone(c,lat,lng){
+  const k=geoId(c);
+  if(lat!=null&&(c.lat==null||km({lat,lng},c)<40)){GEO[k]=[+lat.toFixed(6),+lng.toFixed(6)];c.lat=GEO[k][0];c.lng=GEO[k][1];c.approx=null;c._geo=1}
+  else GEO[k]=0;
+  saveGeo();clearTimeout(geoRedrawT);geoRedrawT=setTimeout(drawChurches,500);
+}
+function geoPump(){
+  while(geoBusy<3&&geoQ.length){
+    const c=geoQ.shift();geoBusy++;
+    const fin=(lat,lng)=>{geoBusy--;geoDone(c,lat,lng);geoPump()};
+    const byName=()=>{
+      const core=String(c.name).replace(/\(.*?\)/g,"").trim();
+      PLACES.keywordSearch(`${c.sigungu||c.sido||""} ${core}`.trim(),(d,st)=>{
+        if(st===kakao.maps.services.Status.OK){const sg=String(c.sigungu||"").split(" ")[0];const hit=d.find(p=>p.place_name.replace(/\s/g,"").includes(core.replace(/\s/g,""))&&(!sg||(p.address_name+p.road_address_name).includes(sg)));if(hit)return fin(+hit.y,+hit.x)}
+        fin(null,null)});
+    };
+    const q=geoAddr(c);
+    if(!q){byName();continue}
+    GEOC.addressSearch(q,(r,st)=>{if(st===kakao.maps.services.Status.OK&&r[0])fin(+r[0].y,+r[0].x);else byName()});
+  }
+}
+function geoRequest(list,center){
+  if(!GEOC)return;
+  list.filter(c=>c.approx&&!c._geo&&GEO[geoId(c)]===undefined&&!geoQueued.has(c.id))
+    .map(c=>({c,d:km(center,c)})).sort((a,b)=>a.d-b.d).slice(0,150)
+    .forEach(({c})=>{geoQueued.add(c.id);geoQ.push(c)});
+  geoPump();
+}
+
+function mapChurches(){const d=S.denom;return S.churches.filter(c=>{locate(c);applyGeo(c);return c.lat!=null&&(!d||c.denom===d)})}
 function drawChurches(){
-  if(!MAP||!churchLayer)return;
-  churchLayer.clearLayers();bubLayer.clearLayers();
-  const z=MAP.getZoom(),b=MAP.getBounds().pad(.1),all=mapChurches();
+  if(!V)return;
+  V.clear();
+  const z=V.zoom(),b=V.bounds(),all=mapChurches();
   $("map").classList.toggle("show-names",z>=14);
-  if(S.sggLabels){if(z>=9&&z<12)S.sggLabels.addTo(MAP);else S.sggLabels.remove()}
-  const inView=all.filter(c=>b.contains([c.lat,c.lng]));
+  const inView=all.filter(c=>c.lat>=b.s&&c.lat<=b.n&&c.lng>=b.w&&c.lng<=b.e);
   S.inView=inView;
-  $("mapCount").textContent=`이 화면 안의 등록 교회 ${inView.length.toLocaleString()}곳`;
+  const apx=inView.filter(c=>c.approx).length;
+  let note=`이 화면 안의 등록 교회 ${inView.length.toLocaleString()}곳`;
   if(z<12){
+    $("mapCount").textContent=note+" · 확대하면 교회가 하나씩 보여요";
     const bySido=z<9;const g={};inView.forEach(c=>{const k=bySido?c.sido:c.sido+" "+c.sigungu;(g[k]=g[k]||[]).push(c)});
     Object.entries(g).forEach(([k,cs])=>{const lat=cs.reduce((a,c)=>a+c.lat,0)/cs.length,lng=cs.reduce((a,c)=>a+c.lng,0)/cs.length;
-      L.marker([lat,lng],{icon:L.divIcon({className:"",iconSize:null,html:`<div class="bub">✝ ${cs.length.toLocaleString()} <small>${esc(bySido?k:k.split(" ").slice(1).join(" "))}</small></div>`})}).on("click",()=>MAP.setView([lat,lng],bySido?10:13)).addTo(bubLayer)});
+      V.add(lat,lng,`<div class="bub">✝ ${cs.length.toLocaleString()} <small>${esc(bySido?k:k.split(" ").slice(1).join(" "))}</small></div>`,()=>V.setView(lat,lng,bySido?10:13))});
     return;
   }
-  const show=inView.slice(0,450);
+  const ctr=V.getCenter();
+  const show=inView.map(c=>({c,d:km(ctr,c)})).sort((a,b)=>a.d-b.d).slice(0,450).map(x=>x.c);
+  if(GEOC){geoRequest(inView,ctr);if(apx)note+=` · 정확한 위치 찾는 중 ${apx}곳`}
+  else if(apx)note+=" · 흐린 표시는 동네 단위 대략 위치예요";
+  $("mapCount").textContent=note+(inView.length>450?" · 확대하면 모두 보여요":"");
   show.forEach(c=>{
-    const cls="cm"+(c.id===S.sel?" sel":"")+(c.id===S.prefs.myChurch?" mine":"");
-    L.marker([c.lat,c.lng],{title:c.name,keyboard:true,icon:L.divIcon({className:"",iconSize:null,html:`<div class="${cls}">${CROSS}<span class="nm">${esc(c.name)}</span></div>`})}).on("click",()=>openNearList(c.id)).addTo(churchLayer);
+    const top=c.id===S.sel||c.id===S.prefs.myChurch;
+    const cls="cm"+(c.approx?" ap":"")+(c.id===S.sel?" sel":"")+(c.id===S.prefs.myChurch?" mine":"");
+    V.add(c.lat,c.lng,`<div class="${cls}" title="${esc(c.name)}">${CROSS}<span class="nm">${esc(c.name)}</span></div>`,()=>openNearList(c.id),top);
   });
-  if(inView.length>450)$("mapCount").textContent+=" · 지도를 확대하면 모두 보여요";
 }
 function showNearMap(){$("nearMap").hidden=false;$("nearList").hidden=true}
 function openNearList(id){
