@@ -1789,7 +1789,14 @@ $("imp").oninput=()=>{if(pendingImport){pendingImport=null;$("impMsg").textConte
 S.prefs=ls("jk-prefs")||{};
 
 getJSON("dir/denoms.json").then(j=>{if(j){S.denoms=j.items;$("denomSource").textContent=`교단 목록: ${j.source} · ${j.items.length}개`;fillDenomForm();render()}});
-getJSON("dir/index.json").then(ix=>{S.dirIndex=ix?ix.files:[];return ix}).then(ix=>Promise.all((ix?ix.files:[]).map(f=>getJSON(f.file).then(j=>j?j.rows.map((r,i)=>({id:`${j.denomId}-${i}`,presbytery:j.pres[r[0]]||"",name:r[1],sido:r[2],sigungu:r[3],address:r[4],phone:r[5],website:r[6],lat:r[7],lng:r[8],approx:r[9]?"dong":"sgg",denom:j.denom,verified:true,sample:false,services:[],tags:[],source:j.source})):[])))).then(parts=>{S.dirChurches=parts.flat();S.loaded=true;mergeChurches();render()});
+getJSON("dir/index.json").then(ix=>{S.dirIndex=ix?ix.files:[];return ix}).then(ix=>Promise.all((ix?ix.files:[]).map(f=>getJSON(f.file).then(j=>j?j.rows.map((r,i)=>({id:`${j.denomId}-${i}`,presbytery:j.pres[r[0]]||"",name:r[1],sido:r[2],sigungu:r[3],address:r[4],phone:r[5],website:r[6],lat:r[7],lng:r[8],approx:r[9]?"dong":"sgg",denom:j.denom,verified:true,sample:false,services:[],tags:[],source:j.source})):[])))).then(async parts=>{
+  // 정보 수정: dir/fixes.json 에 교회 ID별로 고친 값을 적으면 명부 위에 덮어씁니다. ("숨김":true 이면 목록에서 뺍니다.)
+  const fx=await getJSON("dir/fixes.json").catch(()=>null)||{};
+  const KEYS={"홈페이지":"website","전화":"phone","주소":"address","이름":"name","시군구":"sigungu","유튜브":"youtube"};
+  let list=parts.flat();
+  list=list.filter(c=>{const f=fx[c.id];if(!f||typeof f!=="object")return true;if(f["숨김"]===true)return false;
+    Object.entries(f).forEach(([k,v])=>{const key=KEYS[k]||k;if(key==="website"||key==="youtube"){v=String(v).trim();if(v&&!/^https?:\/\//.test(v))v="http://"+v}c[key]=v;if(key==="address"||key==="sigungu"){c._gk=null;c._geo=0;c.approx=c.approx||"dong"}});return true});
+  S.dirChurches=list;S.loaded=true;mergeChurches();render()});
 (async()=>{
   const [db,user]=await Promise.all([claude.use("db"),claude.use("user")]);
   if(!db){S.loaded=true;mergeChurches();render();return}
