@@ -1036,7 +1036,7 @@ footer.copy{text-align:center;font-size:11.5px;color:var(--muted);padding-top:8p
           <label>신청하시는 분 (이름·직분)<input id="r-who" required maxlength="40" placeholder="예: 홍길동 집사"></label>
           <label>확인용 연락처<input id="r-contact" required maxlength="40" placeholder="전화 또는 이메일"></label>
         </div>
-        <p class="muted" style="font-size:12.5px">신청서는 메일로 운영자(reau5789@daum.net)에게 전달됩니다. 연락처는 교단 소속 확인에만 씁니다.</p>
+        <p class="muted" style="font-size:12.5px">신청서는 운영자에게 바로 전달됩니다. 연락처는 교단 소속 확인에만 씁니다.</p>
         <p class="msg" id="regMsg" hidden></p>
         <button class="btn lamp" type="submit">등록 신청 보내기</button>
       </form>
@@ -1181,7 +1181,7 @@ const naver=c=>`https://map.naver.com/p/search/${mapQ(c)}`;
 function card(c){
   const times=(c.services||[]).map(s=>`<dt>${esc(s.label)}</dt><dd>${esc(s.time)}</dd>`).join("");
   const my=S.prefs.myChurch===c.id, cand=S.cands.some(x=>x.churchId===c.id);
-  let act=`<a class="btn small" href="${naver(c)}" target="_blank" rel="noopener">길찾기</a>`;
+  let act=`<button class="btn small" data-onmap="${esc(c.id)}">🗺 지도에서 보기</button><a class="btn small" href="${naver(c)}" target="_blank" rel="noopener">길찾기</a>`;
   if(c.phone)act+=`<button class="btn small" data-copy="${esc(c.phone)}">☎ ${esc(c.phone)}</button>`;
   if(/^https?:\/\//.test(c.website||""))act+=`<a class="btn small" href="${esc(c.website)}" target="_blank" rel="noopener">홈페이지</a>`;
   if(/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(c.youtube||""))act+=`<a class="btn small" href="${esc(c.youtube)}" target="_blank" rel="noopener">▶ 유튜브</a>`;
@@ -1344,7 +1344,7 @@ function leafletView(el,lat,lng,z){
 }
 let mapStarting=false;
 async function initMap(){
-  if(MAP){MAP.invalidateSize();drawChurches();return}
+  if(MAP){MAP.invalidateSize();drawChurches();if(S.focusId)focusChurch();return}
   if(mapStarting)return;mapStarting=true;
   const h0=S.prefs.home,lat=h0?h0.lat:36.35,lng=h0?h0.lng:127.8,z=h0?15:7,el=$("map");
   $("mapCount").textContent="지도를 여는 중…";
@@ -1357,9 +1357,23 @@ async function initMap(){
   V.onMove(drawChurches);
   if(h0)setMe(h0,false);
   // 현재 위치를 쓰는 중이면(또는 아직 위치가 없으면) 열 때마다 GPS로 새로 찾습니다.
-  if(!h0||h0.label==="현재 위치")locateMe(true);
+  if(!h0||h0.label==="현재 위치")locateMe(!S.focusId);
   drawChurches();
+  if(S.focusId)focusChurch();
 }
+// 목록의 '지도에서 보기' → 그 교회를 지도 가운데에 크게 보여 줍니다.
+function focusChurch(){
+  const id=S.focusId;S.focusId=null;const c=byId(id);if(!c||!V)return;
+  S.sel=id;mapChurches();
+  const go=()=>{if(c.lat==null){toast("이 교회는 주소가 없어 지도에 표시할 수 없어요");return}
+    V.setView(c.lat,c.lng,17);drawChurches();
+    toast(c.approx?"정확한 주소를 찾지 못해 동네 단위 대략 위치에 표시했어요":`‘${c.name}’ 위치예요`)};
+  if(c.approx&&GEOC&&GEO[geoId(c)]===undefined){c._cb=go;if(!geoQueued.has(c.id)){geoQueued.add(c.id);geoQ.unshift(c)}else{const i=geoQ.indexOf(c);if(i>0){geoQ.splice(i,1);geoQ.unshift(c)}}geoPump()}
+  else go();
+}
+document.addEventListener("click",e=>{const t=e.target.closest("[data-onmap]");if(!t)return;
+  e.preventDefault();S.focusId=t.dataset.onmap;
+  if(S.mode!=="near")setMode("near");else{showNearMap();if(MAP){MAP.invalidateSize();focusChurch()}else initMap()}});
 let watchId=null;
 function setMe(h,fly=true){if(!V)return;V.me(h);if(fly)V.setView(h.lat,h.lng,15)}
 function locateMe(recenter){
@@ -1375,7 +1389,7 @@ function locateMe(recenter){
 }
 
 // ---- 주소 → 정확한 좌표 (카카오 주소 검색, 휴대폰에 저장해 두고 다시 쓰기) ----
-let GEOC=null,PLACES=null;const GEO_KEY="jk-geo-v1";let GEO={};
+let GEOC=null,PLACES=null;const GEO_KEY="jk-geo-v2";let GEO={};
 try{GEO=JSON.parse(localStorage.getItem(GEO_KEY)||"{}")||{}}catch(e){GEO={}}
 let geoSaveT=null;function saveGeo(){clearTimeout(geoSaveT);geoSaveT=setTimeout(()=>{try{localStorage.setItem(GEO_KEY,JSON.stringify(GEO))}catch(e){}},1500)}
 const geoId=c=>c._gk||(c._gk=c.id+":"+Math.floor(hash(c.name+"|"+c.address)*1e7));
@@ -1388,7 +1402,7 @@ function geoAddr(c){
   const pre=[c.sido,sg].filter(Boolean).join(" ");
   return (sg&&normS(a).startsWith(normS(sg)))||(c.sido&&a.startsWith(c.sido))?a:(pre+" "+a).trim();
 }
-const geoQ=[],geoQueued=new Set();let geoBusy=0,geoRedrawT=null;
+const geoQ=[],geoQueued=new Set();let geoBusy=0,geoRedrawT=null,geoRetryT=null;
 function geoDone(c,lat,lng){
   const k=geoId(c);
   if(lat!=null&&(c.lat==null||km({lat,lng},c)<40)){GEO[k]=[+lat.toFixed(6),+lng.toFixed(6)];c.lat=GEO[k][0];c.lng=GEO[k][1];c.approx=null;c._geo=1}
@@ -1398,16 +1412,22 @@ function geoDone(c,lat,lng){
 function geoPump(){
   while(geoBusy<5&&geoQ.length){
     const c=geoQ.shift();geoBusy++;
-    const fin=(lat,lng)=>{geoBusy--;geoDone(c,lat,lng);geoPump()};
+    const ST=kakao.maps.services.Status;
+    const fin=(lat,lng,err)=>{geoBusy--;
+      if(err){geoQueued.delete(c.id);clearTimeout(geoRetryT);geoRetryT=setTimeout(drawChurches,4000)}  // 일시 오류는 저장하지 않고 잠시 뒤 다시 찾기
+      else geoDone(c,lat,lng);
+      if(c._cb){const f=c._cb;c._cb=null;f()}
+      geoPump()};
     const byName=()=>{
       const core=String(c.name).replace(/\(.*?\)/g,"").trim();
       PLACES.keywordSearch(`${c.sigungu||c.sido||""} ${core}`.trim(),(d,st)=>{
-        if(st===kakao.maps.services.Status.OK){const sg=String(c.sigungu||"").split(" ")[0];const hit=d.find(p=>p.place_name.replace(/\s/g,"").includes(core.replace(/\s/g,""))&&(!sg||(p.address_name+p.road_address_name).includes(sg)));if(hit)return fin(+hit.y,+hit.x)}
+        if(st===ST.ERROR)return fin(null,null,true);
+        if(st===ST.OK){const sg=String(c.sigungu||"").split(" ")[0];const hit=d.find(p=>p.place_name.replace(/\s/g,"").includes(core.replace(/\s/g,""))&&(!sg||(p.address_name+p.road_address_name).includes(sg)));if(hit)return fin(+hit.y,+hit.x)}
         fin(null,null)});
     };
     const q=geoAddr(c);
     if(!q){byName();continue}
-    GEOC.addressSearch(q,(r,st)=>{if(st===kakao.maps.services.Status.OK&&r[0])fin(+r[0].y,+r[0].x);else byName()});
+    GEOC.addressSearch(q,(r,st)=>{if(st===ST.OK&&r[0])fin(+r[0].y,+r[0].x);else if(st===ST.ERROR)fin(null,null,true);else byName()});
   }
 }
 function geoRequest(list,center){
@@ -1683,16 +1703,33 @@ function mailText(x){
   L.push("","보낸 분: "+(x.who||"-"),"연락처: "+(x.contact||"-"),"","— 주께로 앱에서 보냄 ("+new Date().toLocaleString("ko-KR")+")");
   return L.join("\n");
 }
+// 앱 안에서 바로 전송 (FormSubmit 서비스 → 운영자 메일). 주소는 config.js 의 FORM_ENDPOINT 에서 정합니다.
+async function sendToAdmin(subject,message){
+  const url=String(window.FORM_ENDPOINT||"").trim();if(!url)return false;
+  try{
+    const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),15000);
+    const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},signal:ctl.signal,
+      body:JSON.stringify({_subject:subject,"내용":message,_template:"box",_captcha:"false"})});
+    clearTimeout(t);if(!r.ok)return false;
+    const j=await r.json().catch(()=>({}));return j.success===true||j.success==="true";
+  }catch(e){return false}
+}
 async function submitInbox(item){
   const subj={register:"[주께로] 교회 등록 신청",fix:"[주께로] 교회 정보 수정 요청",report:"[주께로] 이단 교회 신고"}[item.type]+" - "+item.title;
   const body=mailText(item);
   const href=`mailto:${MAILTO}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
-  openSheet(`<h2>메일로 보내기</h2><p class="muted">아래 버튼을 누르면 메일 앱이 열립니다. 내용을 확인한 뒤 <b>보내기</b>를 눌러 주세요. 메일 앱이 열리지 않으면 내용을 복사해 <b>${MAILTO}</b> 로 보내 주세요.</p>
+  openSheet(`<h2>운영자에게 보내기</h2><p class="muted">아래 내용을 확인하고 <b>보내기</b>를 눌러 주세요. 바로 운영자에게 전달됩니다.</p>
     <textarea class="msgbox" id="mailBody" readonly>${esc(body)}</textarea>
-    <div class="actions"><a class="btn primary" href="${esc(href)}">✉ 메일 앱으로 보내기</a><button class="btn" type="button" id="mailCopy">내용 복사</button><button class="btn" type="button" id="mailAddr">주소 복사</button><button class="btn" type="button" id="sheetCancel">닫기</button></div>`);
+    <p class="msg" id="sendMsg" hidden></p>
+    <div class="actions"><button class="btn primary" type="button" id="mailSend">보내기</button><button class="btn" type="button" id="sheetCancel">닫기</button></div>`);
   $("sheetCancel").onclick=closeSheet;
-  $("mailCopy").onclick=async()=>{if(await copy(subj+"\n\n"+body))toast("내용을 복사했어요");else{$("mailBody").select();toast("글을 길게 눌러 복사하세요")}};
-  $("mailAddr").onclick=async()=>{if(await copy(MAILTO))toast("메일 주소를 복사했어요");else toast(MAILTO)};
+  $("mailSend").onclick=async()=>{
+    const btn=$("mailSend"),m=$("sendMsg");btn.disabled=true;btn.textContent="보내는 중…";m.hidden=true;
+    const ok=await sendToAdmin(subj,body);
+    if(ok){openSheet(`<h2>보냈어요 🙏</h2><p>운영자에게 잘 전달되었습니다. 확인한 뒤 반영하겠습니다.</p><div class="actions"><button class="btn primary" type="button" id="sheetCancel">닫기</button></div>`);$("sheetCancel").onclick=closeSheet;return}
+    btn.disabled=false;btn.textContent="다시 보내기";m.hidden=false;
+    m.innerHTML=`지금은 바로 보내지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요. 계속 안 되면 <a href="${esc(href)}">메일 앱으로 보내기</a>를 눌러 주세요.`;
+  };
   return "mail";
 }
 function itemSummary(x){
