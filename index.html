@@ -1396,7 +1396,7 @@ function geoDone(c,lat,lng){
   saveGeo();clearTimeout(geoRedrawT);geoRedrawT=setTimeout(drawChurches,500);
 }
 function geoPump(){
-  while(geoBusy<3&&geoQ.length){
+  while(geoBusy<5&&geoQ.length){
     const c=geoQ.shift();geoBusy++;
     const fin=(lat,lng)=>{geoBusy--;geoDone(c,lat,lng);geoPump()};
     const byName=()=>{
@@ -1413,7 +1413,7 @@ function geoPump(){
 function geoRequest(list,center){
   if(!GEOC)return;
   list.filter(c=>c.approx&&!c._geo&&GEO[geoId(c)]===undefined&&!geoQueued.has(c.id))
-    .map(c=>({c,d:km(center,c)})).sort((a,b)=>a.d-b.d).slice(0,150)
+    .map(c=>({c,d:km(center,c)})).sort((a,b)=>a.d-b.d).slice(0,500)
     .forEach(({c})=>{geoQueued.add(c.id);geoQ.push(c)});
   geoPump();
 }
@@ -1437,7 +1437,11 @@ function drawChurches(){
   }
   const ctr=V.getCenter();
   const show=inView.map(c=>({c,d:km(ctr,c)})).sort((a,b)=>a.d-b.d).slice(0,450).map(x=>x.c);
-  if(GEOC){geoRequest(inView,ctr);if(apx)note+=` · 정확한 위치 찾는 중 ${apx}곳`}
+  if(GEOC){
+    // 대략 위치는 실제와 몇 km 어긋날 수 있으므로, 화면 주변 시·군·구의 교회를 모두 정확한 위치로 찾습니다.
+    const pad=.05,sg=new Set();all.forEach(c=>{if(c.lat>=b.s-pad&&c.lat<=b.n+pad&&c.lng>=b.w-pad&&c.lng<=b.e+pad)sg.add(c.sido+"|"+c.sigungu)});
+    geoRequest(all.filter(c=>c.approx&&sg.has(c.sido+"|"+c.sigungu)),ctr);
+    const left=geoQ.length+geoBusy;if(left)note+=` · 정확한 위치 찾는 중 ${left}곳`}
   else if(apx)note+=" · 흐린 표시는 동네 단위 대략 위치예요";
   $("mapCount").textContent=note+(inView.length>450?" · 확대하면 모두 보여요":"");
   show.forEach(c=>{
