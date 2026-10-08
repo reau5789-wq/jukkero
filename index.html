@@ -902,6 +902,8 @@ header.top{position:relative}
 .checks{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .checks label{display:flex;gap:6px;align-items:center;font-size:13.5px;color:var(--ink);background:var(--ground);border-radius:10px;padding:8px 10px}
 .checks input{width:auto!important}
+.form label.chk{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--ink);background:var(--ground);border-radius:10px;padding:9px 10px;width:100%}
+.form label.chk input{width:auto}
 .cta{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border:1px dashed var(--lamp);background:var(--lamp-soft);border-radius:14px;padding:12px 14px;font-size:14px}
 .alert{border:1px solid var(--warn);border-radius:14px;padding:14px;display:grid;gap:8px}
 .alert h3{color:var(--warn)}
@@ -1732,8 +1734,8 @@ function svcRow(type){
 function resetSvc(){const L=$("svcList");L.innerHTML="";["새벽기도회","주일 1부 예배","수요예배"].forEach(t=>L.appendChild(svcRow(t)))}
 $("svcAdd").onclick=()=>{const r=svcRow("주일 2부 예배");$("svcList").appendChild(r);r.querySelector("select").focus()};
 resetSvc();
-function readSvc(){
-  return [...document.querySelectorAll("#svcList .svc")].map(d=>{
+function readSvc(sel="#svcList"){
+  return [...document.querySelectorAll(sel+" .svc")].map(d=>{
     const q=c=>d.querySelector(c),h=q(".svc-h").value,m=q(".svc-m").value;
     if(h==="00"&&m==="00")return null;
     let name=q(".svc-type").value;if(name==="직접 입력")name=q(".svc-name").value.trim()||"예배";
@@ -1767,13 +1769,29 @@ const MAILTO="reau5789@daum.net";
 function mailText(x){
   const L=[];
   if(x.type==="register"){const c=x.church;L.push("[교회 등록 신청]","교회 이름: "+c.name,"교단: "+c.denom,"노회·지방회: "+(c.presbytery||"-"),"주소: "+[c.sido,c.sigungu,c.address].filter(Boolean).join(" "),"예배 시간: "+((c.services||[]).map(s=>s.label+" "+s.time).join(", ")||"-"),"담임목사: "+(c.pastor||"-"),"전화: "+(c.phone||"-"),"홈페이지: "+(c.website||"-"),"유튜브: "+(c.youtube||"-"),"특징: "+((c.tags||[]).join(", ")||"-"))}
-  else if(x.type==="fix"){const c=x.church;L.push("[교회 정보 수정 요청]","교회: "+c.name+" ("+c.denom+")","현재 주소: "+[c.sido,c.sigungu,c.address].filter(Boolean).join(" "),"교회 ID: "+x.churchId,"잘못된 부분: "+((x.fields||[]).join(", ")||"-"),"","올바른 내용:",x.detail)}
+  else if(x.type==="fix"){const c=x.church,g=x.changes||{};L.push("[교회 정보 수정 요청]","교회: "+c.name+" ("+c.denom+")","현재 주소: "+[c.sido,c.sigungu,c.address].filter(Boolean).join(" "),"교회 ID: "+x.churchId,"잘못된 부분: "+((x.fields||[]).join(", ")||"-"),"","고친 내용:");
+    if(g.name)L.push("· 교회 이름: "+g.name);if(g.address!=null)L.push("· 주소: "+[g.sido,g.sigungu,g.address].filter(Boolean).join(" "));if(g.phone!=null)L.push("· 전화: "+(g.phone||"(지움)"));if(g.website!=null)L.push("· 홈페이지: "+(g.website||"(지움)"));if(g.youtube!=null)L.push("· 유튜브: "+(g.youtube||"(지움)"));
+    if(g.services)L.push("· 예배 시간:",...g.services.map(s=>"   "+s.label+" "+s.time));if(g.closed)L.push("· 문을 닫았거나 합쳐진 교회");
+    if(x.detail)L.push("","더 알려 주신 내용:",x.detail)}
   else{L.push("[이단 교회 신고]","교회·모임 이름: "+x.title,"위치: "+(x.place||"-"),"주께로 목록에 있음: "+x.listed,"의심 이유: "+((x.reasons||[]).join(", ")||"-"),"","보고 들은 내용:",x.detail)}
   L.push("","보낸 분: "+(x.who||"-"),"연락처: "+(x.contact||"-"),"","— 주께로 앱에서 보냄 ("+new Date().toLocaleString("ko-KR")+")");
   return L.join("\n");
 }
 // 앱 안에서 바로 전송 (FormSubmit 서비스 → 운영자 메일). 주소는 config.js 의 FORM_ENDPOINT 에서 정합니다.
-async function sendToAdmin(subject,message){
+// 운영자 자동 처리기(Google Apps Script)가 config.js 의 ADMIN_ENDPOINT 에 있으면 그쪽으로 먼저 보냅니다.
+// 그곳이 요청을 저장하고, 운영자에게 '검토·승인' 버튼이 든 메일을 보냅니다. 실패하면 예전처럼 FormSubmit 메일로 보냅니다.
+async function sendToProcessor(subject,message,item){
+  const url=String(window.ADMIN_ENDPOINT||"").trim();if(!url||!item)return false;
+  try{
+    const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),20000);
+    const r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},signal:ctl.signal,
+      body:JSON.stringify({...item,_subject:subject,_text:message,_at:new Date().toISOString(),_hp:""})});
+    clearTimeout(t);if(!r.ok)return false;
+    const j=await r.json().catch(()=>({}));return j.ok===true;
+  }catch(e){return false}
+}
+async function sendToAdmin(subject,message,item){
+  if(await sendToProcessor(subject,message,item))return true;
   const url=String(window.FORM_ENDPOINT||"").trim();if(!url)return false;
   try{
     const ctl=new AbortController(),t=setTimeout(()=>ctl.abort(),15000);
@@ -1794,7 +1812,7 @@ async function submitInbox(item){
   $("sheetCancel").onclick=closeSheet;
   $("mailSend").onclick=async()=>{
     const btn=$("mailSend"),m=$("sendMsg");btn.disabled=true;btn.textContent="보내는 중…";m.hidden=true;
-    const ok=await sendToAdmin(subj,body);
+    const ok=await sendToAdmin(subj,body,item);
     if(ok){openSheet(`<h2>보냈어요 🙏</h2><p>운영자에게 잘 전달되었습니다. 확인한 뒤 반영하겠습니다.</p><div class="actions"><button class="btn primary" type="button" id="sheetCancel">닫기</button></div>`);$("sheetCancel").onclick=closeSheet;return}
     btn.disabled=false;btn.textContent="다시 보내기";m.hidden=false;
     m.innerHTML=`지금은 바로 보내지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요. 계속 안 되면 <a href="${esc(href)}">메일 앱으로 보내기</a>를 눌러 주세요.`;
@@ -1835,19 +1853,41 @@ function openSheet(html){$("sheetBody").innerHTML=html;$("sheet").hidden=false;$
 function closeSheet(){$("sheet").hidden=true;$("sheetScrim").hidden=true}
 $("sheetScrim").onclick=closeSheet;
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("sheet").hidden)closeSheet()});
-const FIXF=["교회 이름","교단·노회","주소","전화","예배 시간","홈페이지","유튜브","이전·폐쇄","기타"];
 function openFix(id){
   const c=byId(id);if(!c)return;
-  openSheet(`<h2>교회 정보 수정 요청</h2><p class="muted"><b>${esc(c.name)}</b> · ${esc(c.denom)}<br>${esc([c.sido,c.sigungu,c.address].filter(Boolean).join(" "))}</p>
-  <form class="form" id="fixForm"><p class="label" style="margin:0">잘못된 부분 (여러 개 고를 수 있어요)</p>
-  <div class="checks">${FIXF.map(f=>`<label><input type="checkbox" name="f" value="${f}">${f}</label>`).join("")}</div>
-  <label>올바른 내용<textarea id="fx-detail" rows="3" required maxlength="500" placeholder="예: 2025년에 ○○로 12로 이전했습니다. 주일 1부는 9시입니다."></textarea></label>
+  const full=[c.sido,c.sigungu,c.address].filter(Boolean).join(" ");
+  openSheet(`<h2>교회 정보 수정 요청</h2><p class="muted"><b>${esc(c.name)}</b> · ${esc(c.denom)}<br>${esc(full)}</p>
+  <form class="form" id="fixForm"><p class="muted" style="font-size:12.5px;margin:0">지금 정보가 칸마다 들어 있어요. <b>틀린 칸만 고쳐</b> 주세요. 고친 칸만 운영자에게 전달됩니다.</p>
+  <label>교회 이름<input id="fx-name" maxlength="40" value="${esc(c.name)}"></label>
+  <label>주소 (시·도부터)<input id="fx-addr" maxlength="120" value="${esc(full)}"></label>
+  <div class="two"><label>전화<input id="fx-phone" maxlength="20" inputmode="tel" value="${esc(c.phone||"")}"></label><label>홈페이지<input id="fx-web" maxlength="200" inputmode="url" value="${esc(c.website||"")}"></label></div>
+  <label>유튜브<input id="fx-yt" maxlength="200" inputmode="url" value="${esc(c.youtube||"")}" placeholder="youtube.com/@교회채널"></label>
+  <div class="svc-wrap"><label class="chk"><input type="checkbox" id="fx-svcOn"> 예배 시간도 알려 줄게요</label>
+    <span class="svc-hint" id="fxSvcHint" hidden>보내 주신 예배 시간이 이 교회의 시간표 전체가 됩니다. 모든 예배를 넣어 주세요. (시간이 00:00 인 줄은 빠집니다)</span>
+    <div id="fxSvc" class="svc-list" hidden></div><button type="button" class="btn small" id="fxSvcAdd" hidden>＋ 예배 추가</button></div>
+  <label class="chk"><input type="checkbox" id="fx-closed"> 이 교회는 문을 닫았거나 다른 교회와 합쳐졌어요</label>
+  <label>더 알려 주실 내용 (선택)<textarea id="fx-detail" rows="3" maxlength="500" placeholder="예: 2025년에 이전했습니다. 확인은 교회 사무실로 하시면 됩니다."></textarea></label>
   <div class="two"><label>보내는 분 (선택)<input id="fx-who" maxlength="40" placeholder="예: 담임목사, 성도"></label><label>연락처 (선택)<input id="fx-contact" maxlength="40"></label></div>
-  <p class="muted" style="font-size:12.5px">운영자가 교단 명부와 교회에 확인한 뒤 고칩니다. 연락처는 공개되지 않습니다.</p>
+  <p class="msg" id="fxMsg" hidden></p>
+  <p class="muted" style="font-size:12.5px">운영자가 확인한 뒤 고칩니다. 연락처는 공개되지 않습니다.</p>
   <div class="actions"><button class="btn primary" type="submit">수정 요청 보내기</button><button class="btn" type="button" id="sheetCancel">닫기</button></div></form>`);
   $("sheetCancel").onclick=closeSheet;
-  $("fixForm").onsubmit=async e=>{e.preventDefault();const fields=[...e.target.querySelectorAll("input[name=f]:checked")].map(x=>x.value);
-    if(await submitInbox({type:"fix",title:c.name,churchId:c.id,church:{name:c.name,denom:c.denom,sido:c.sido,sigungu:c.sigungu,address:c.address,phone:c.phone||""},fields,detail:$("fx-detail").value.trim(),who:$("fx-who").value.trim(),contact:$("fx-contact").value.trim()})){}};
+  $("fx-svcOn").onchange=e=>{const on=e.target.checked,L=$("fxSvc");L.hidden=!on;$("fxSvcAdd").hidden=!on;$("fxSvcHint").hidden=!on;
+    if(on&&!L.children.length)["새벽기도회","주일 1부 예배","주일 2부 예배","수요예배"].forEach(t=>L.appendChild(svcRow(t)))};
+  $("fxSvcAdd").onclick=()=>{const r=svcRow("주일 3부 예배");$("fxSvc").appendChild(r);r.querySelector("select").focus()};
+  $("fixForm").onsubmit=async e=>{e.preventDefault();const m=$("fxMsg"),v=k=>$(k).value.trim(),g={},fields=[];
+    const bad=t=>{m.hidden=false;m.textContent=t;return false};m.hidden=true;
+    if(v("fx-name")&&v("fx-name")!==c.name){g.name=v("fx-name");fields.push("교회 이름")}
+    if(v("fx-addr").replace(/\s+/g," ")!==full.replace(/\s+/g," ")){const ad=splitAddr(v("fx-addr"));if(!ad)return bad("주소는 시·도와 시·군·구부터 적어 주세요. 예: 경기 남양주시 화도읍 ○○로 00");Object.assign(g,ad);fields.push("주소")}
+    if(v("fx-phone")!==(c.phone||"")){g.phone=v("fx-phone");fields.push("전화")}
+    if(v("fx-web")!==(c.website||"")){g.website=v("fx-web")?fixUrl(v("fx-web")):"";fields.push("홈페이지")}
+    if(v("fx-yt")!==(c.youtube||"")){g.youtube=v("fx-yt")?fixUrl(v("fx-yt")):"";if(g.youtube&&!/(youtube\.com|youtu\.be)/i.test(g.youtube))return bad("유튜브 칸에는 youtube.com 또는 youtu.be 주소를 넣어 주세요.");fields.push("유튜브")}
+    if($("fx-svcOn").checked){const sv=readSvc("#fxSvc");if(!sv.length)return bad("예배 시간을 하나 이상 넣어 주세요. (시·분이 00:00 이면 빠집니다)");g.services=sv;fields.push("예배 시간")}
+    if($("fx-closed").checked){g.closed=true;fields.push("이전·폐쇄")}
+    const detail=v("fx-detail");
+    if(!fields.length&&!detail)return bad("고친 칸이 없어요. 틀린 칸을 고치거나 '더 알려 주실 내용'을 적어 주세요.");
+    if(detail&&!fields.length)fields.push("기타");
+    await submitInbox({type:"fix",title:c.name,churchId:c.id,church:{name:c.name,denom:c.denom,sido:c.sido,sigungu:c.sigungu,address:c.address,phone:c.phone||"",website:c.website||"",youtube:c.youtube||""},changes:g,fields,detail,who:v("fx-who"),contact:v("fx-contact")})};
 }
 const REASONS=["신분을 숨기고 접근","성경공부를 비밀로 하라고 함","특정 인물을 재림주·보혜사로 믿음","가족·교회와 멀어지게 함","과도한 헌금·시간 요구","교단 결의 단체와 관련","기타"];
 function openReport(){
@@ -1898,10 +1938,15 @@ getJSON("dir/denoms.json").then(j=>{if(j){S.denoms=j.items;$("denomSource").text
 getJSON("dir/index.json").then(ix=>{S.dirIndex=ix?ix.files:[];return ix}).then(ix=>Promise.all((ix?ix.files:[]).map(f=>getJSON(f.file).then(j=>j?j.rows.map((r,i)=>({id:`${j.denomId}-${i}`,presbytery:j.pres[r[0]]||"",name:r[1],sido:r[2],sigungu:r[3],address:r[4],phone:r[5],website:r[6],lat:r[7],lng:r[8],approx:r[9]?"dong":"sgg",denom:j.denom,verified:true,sample:false,services:[],tags:[],source:j.source})):[])))).then(async parts=>{
   // 정보 수정: dir/fixes.json 에 교회 ID별로 고친 값을 적으면 명부 위에 덮어씁니다. ("숨김":true 이면 목록에서 뺍니다.)
   const fx=await getJSON("dir/fixes.json").catch(()=>null)||{};
-  const KEYS={"홈페이지":"website","전화":"phone","주소":"address","이름":"name","시군구":"sigungu","유튜브":"youtube"};
-  let list=parts.flat();
+  // 새로 승인된 교회: dir/added.json (운영자 자동 처리기가 승인 때 채웁니다)
+  const ad=await getJSON("dir/added.json").catch(()=>null)||{};
+  const added=(ad.items||[]).filter(x=>x&&x.id&&x.name&&x.sigungu).map(x=>({presbytery:"",phone:"",website:"",youtube:"",...x,services:x.services||[],tags:x.tags||[],
+    approx:x.lat!=null?null:"dong",_geo:x.lat!=null?1:0,lat:x.lat??null,lng:x.lng??null,verified:true,sample:false,source:x.source||"주께로 등록 신청 (운영자 확인)"}));
+  const KEYS={"홈페이지":"website","전화":"phone","주소":"address","이름":"name","시도":"sido","시군구":"sigungu","유튜브":"youtube","예배시간":"services","담임목사":"pastor","위도":"lat","경도":"lng"};
+  let list=parts.flat().concat(added);
   list=list.filter(c=>{const f=fx[c.id];if(!f||typeof f!=="object")return true;if(f["숨김"]===true)return false;
-    Object.entries(f).forEach(([k,v])=>{const key=KEYS[k]||k;if(key==="website"||key==="youtube"){v=String(v).trim();if(v&&!/^https?:\/\//.test(v))v="http://"+v}c[key]=v;if(key==="address"||key==="sigungu"){c._gk=null;c._geo=0;c.approx=c.approx||"dong"}});return true});
+    Object.entries(f).forEach(([k,v])=>{const key=KEYS[k]||k;if(key==="website"||key==="youtube"){v=String(v).trim();if(v&&!/^https?:\/\//.test(v))v="http://"+v}c[key]=v;if(key==="services"&&!Array.isArray(v))c.services=[];if(key==="address"||key==="sigungu"){c._gk=null;c._geo=0;c.approx=c.approx||"dong"}});
+    if(f["위도"]!=null&&f["경도"]!=null){c.lat=+f["위도"];c.lng=+f["경도"];c.approx=null;c._geo=1}return true});
   S.dirChurches=list;S.loaded=true;mergeChurches();render()});
 (async()=>{
   const [db,user]=await Promise.all([claude.use("db"),claude.use("user")]);
