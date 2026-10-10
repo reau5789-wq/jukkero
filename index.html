@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<style>html,body{margin:0}[hidden]{display:none!important}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}img{max-width:100%}</style>
+<style>html,body{margin:0}[hidden]{display:none!important}input,select,textarea{font-size:16px!important}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}img{max-width:100%}</style>
 <script>
 // 기기 저장소: 클라우드 대신 이 휴대폰에만 저장합니다.
 (function(){
@@ -1251,6 +1251,18 @@ function pickPerson(id,rerender=true){
   S.q=sg||toks[toks.length-1]||"";$("q").value=S.q;
   if(rerender)render();
 }
+// 입력 중인 칸이 있으면 화면을 새로 그리지 않고, 내용이 같으면 아예 건드리지 않습니다.
+// (위치 갱신·자료 로딩 때문에 입력하던 글자가 지워지고 키보드가 닫히던 문제 방지)
+const isField=a=>a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+function setHTML(el,html,redo){
+  if(el._h===html)return false;
+  const a=document.activeElement;
+  if(isField(a)&&el.contains(a)){
+    if(!el._wait){el._wait=1;const f=()=>setTimeout(()=>{const b=document.activeElement;if(isField(b)&&el.contains(b))return;el.removeEventListener("focusout",f);el._wait=0;if(redo)redo()},300);el.addEventListener("focusout",f)}
+    return false;
+  }
+  el.innerHTML=html;el._h=html;return true;
+}
 function renderModePanel(list){
   const el=$("modePanel");
   if(!S.mode||S.mode==="near"){el.hidden=true;return}
@@ -1267,16 +1279,16 @@ function renderModePanel(list){
       <p class="muted">예배 시간이 등록된 교회 ${withT.toLocaleString()}곳 / ${list.length.toLocaleString()}곳. 시간이 등록된 교회가 앞에 나옵니다.${withT<list.length?" 교회가 ‘등록’ 탭에서 예배 시간을 보내 주시면 시간표가 채워집니다.":""}</p>
     </div>`;
   }else if(S.mode==="choose"){
-    el.innerHTML=`<div class="panel"><p style="margin:0;font-size:14px">담은 후보 <b>${S.cands.length}곳</b>${S.cands.length?" · "+S.cands.slice(0,3).map(x=>esc((byId(x.churchId)||{}).name||"")).join(", ")+(S.cands.length>3?" 외":""):""}</p><button class="btn primary" id="goCmp" ${S.cands.length<2?"disabled":""}>후보 비교하러 가기</button>${!S.uid?'<p class="msg">로그인한 상태에서 후보가 저장됩니다.</p>':""}</div>`;
+    if(setHTML(el,`<div class="panel"><p style="margin:0;font-size:14px">담은 후보 <b>${S.cands.length}곳</b>${S.cands.length?" · "+S.cands.slice(0,3).map(x=>esc((byId(x.churchId)||{}).name||"")).join(", ")+(S.cands.length>3?" 외":""):""}</p><button class="btn primary" id="goCmp" ${S.cands.length<2?"disabled":""}>후보 비교하러 가기</button>${!S.uid?'<p class="msg">로그인한 상태에서 후보가 저장됩니다.</p>':""}</div>`,render))
     $("goCmp").onclick=()=>showView("mine");
   }else if(S.mode==="share"){
     const ppl=S.notes.length?`<div class="people">${S.notes.map(n=>`<button class="person" data-person="${esc(n.id)}" aria-pressed="${S.person&&S.person.id===n.id}">${esc(n.name)}<small>${esc(n.region)} · ${STAGES[n.stage||0]}</small></button>`).join("")}</div>`:`<p class="muted">아직 전도 노트에 담은 사람이 없어요. 아래에서 바로 적어 보세요.</p>
       <form class="form" id="quickPerson"><div class="two"><input id="qp-name" required maxlength="30" placeholder="이름(별칭)"><input id="qp-region" required maxlength="40" placeholder="사는 동네 (예: 부산 해운대구)"></div><button class="btn soul" type="submit">담고 그 동네 교회 찾기</button></form>`;
     let comp="";
     if(S.composer){const c=byId(S.composer);if(c){comp=`<div class="panel" style="border-color:var(--soul)"><h2>${S.person?esc(S.person.name)+"님께 보낼 메시지":"소개 메시지"}</h2><p>필요하면 고친 뒤 복사해 카톡이나 문자로 보내세요.</p><textarea class="msgbox" id="msgbox">${esc(buildMsg(c,S.person))}</textarea><div class="actions"><button class="btn soul" id="copyMsg">메시지 복사</button>${S.person?`<button class="btn" id="saveIntro">노트에 ‘교회 소개함’으로 기록</button>`:""}<button class="btn" id="closeMsg">닫기</button></div></div>`}}
-    el.innerHTML=`<div class="panel"><p class="label" style="margin:0">누구에게 소개할까요?</p>${ppl}${S.person?`<p class="muted">${esc(S.person.name)}님 동네(${esc(S.person.region)})의 교회입니다. 교회를 골라 ‘소개’를 누르세요.</p>`:""}</div>${comp}`;
+    if(!setHTML(el,`<div class="panel"><p class="label" style="margin:0">누구에게 소개할까요?</p>${ppl}${S.person?`<p class="muted">${esc(S.person.name)}님 동네(${esc(S.person.region)})의 교회입니다. 교회를 골라 ‘소개’를 누르세요.</p>`:""}</div>${comp}`,render))return;
     el.querySelectorAll("[data-person]").forEach(b=>b.onclick=()=>pickPerson(b.dataset.person));
-    const qp=$("quickPerson");if(qp)qp.onsubmit=async e=>{e.preventDefault();const id=await addNote($("qp-name").value.trim(),$("qp-region").value.trim(),"");if(id)pickPerson(id)};
+    const qp=$("quickPerson");if(qp)qp.onsubmit=async e=>{e.preventDefault();const nm=$("qp-name").value.trim(),rg=$("qp-region").value.trim();if(!nm||!rg)return;if(document.activeElement)document.activeElement.blur();const id=await addNote(nm,rg,"");if(id)pickPerson(id)};
     if($("copyMsg")){
       $("copyMsg").onclick=async()=>{const t=$("msgbox").value;if(await copy(t))toast("메시지를 복사했어요. 카톡에 붙여 넣으세요");else{$("msgbox").select();toast("복사가 막혀 있어요. 선택된 글을 길게 눌러 복사하세요")}};
       $("closeMsg").onclick=()=>{S.composer=null;render()};
@@ -1408,7 +1420,8 @@ function locateMe(recenter){
   const fail=err=>{m.hidden=false;m.textContent=(err&&err.code===1)?"위치 권한이 꺼져 있어요. 휴대폰 설정 → 애플리케이션 → 주께로(또는 Chrome) → 권한에서 위치를 ‘허용’으로 바꾸거나, 옆 칸에 동네 이름을 넣어 주세요.":"현재 위치를 가져오지 못했어요. 휴대폰의 위치(GPS)를 켜고 다시 눌러 주세요. 또는 옆 칸에 동네 이름(예: 화도읍)을 넣어 주세요."};
   if(!navigator.geolocation)return fail();
   m.hidden=false;m.textContent="현재 위치를 찾는 중…";
-  const ok=(pos,first)=>{const h={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy||0),label:"현재 위치"};setPref({home:h});setMe(h,first&&recenter);m.hidden=true;if(first){toast("현재 위치 주변 교회를 보여 드려요");drawChurches()}};
+  // 위치가 계속 갱신될 때(watch)는 휴대폰에만 저장 — 저장할 때마다 화면 전체가 다시 그려지며 입력 칸이 닫히던 문제 방지
+  const ok=(pos,first)=>{const h={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:Math.round(pos.coords.accuracy||0),label:"현재 위치"};setPref({home:h},!first);setMe(h,first&&recenter);m.hidden=true;if(first){toast("현재 위치 주변 교회를 보여 드려요");drawChurches()}};
   try{
     navigator.geolocation.getCurrentPosition(p=>ok(p,true),fail,{enableHighAccuracy:true,timeout:15000,maximumAge:0});
     if(watchId==null)watchId=navigator.geolocation.watchPosition(p=>{const h=S.prefs.home;if(h&&h.label!=="현재 위치")return;ok(p,false)},()=>{},{enableHighAccuracy:true,maximumAge:10000});
@@ -1637,9 +1650,9 @@ document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{if(t.dataset.v==="fi
 
 // ---------- private store (per person) ----------
 function col(){return S.db&&S.uid?S.db.collection(`data/users/${S.uid}`):null}
-async function setPref(patch){
+async function setPref(patch,localOnly){
   S.prefs={...S.prefs,...patch};ls("jk-prefs",S.prefs);
-  const c=col();if(c){try{await c.doc("prefs").set({kind:"prefs",...S.prefs})}catch(e){}}
+  const c=col();if(c&&!localOnly){try{await c.doc("prefs").set({kind:"prefs",...S.prefs})}catch(e){}}
 }
 async function toggleCand(id){
   const c=col();if(!c){toast("로그인한 상태에서 후보가 저장됩니다");return}
@@ -1657,15 +1670,15 @@ function renderMine(){
   const my=byId(S.prefs.myChurch);
   $("myChurch").innerHTML=my?card(my):`<p class="muted">아직 내 교회를 정하지 않았어요. ‘이번 주일’에서 교회 카드의 ‘☆ 내 교회로’를 누르세요.</p>`;
   const el=$("candList");
-  if(!S.cands.length){el.innerHTML=`<div class="empty"><strong>담은 후보가 없어요</strong>찾기 → ‘교회 고르기’에서 ☆ 후보 담기를 눌러 보세요.</div>`;$("cmpBtn").hidden=true;$("cmpOut").innerHTML="";return}
-  el.innerHTML=S.cands.map(x=>{const c=byId(x.churchId);if(!c)return "";return `<article class="card">
+  if(!S.cands.length){el._h=null;el.innerHTML=`<div class="empty"><strong>담은 후보가 없어요</strong>찾기 → ‘교회 고르기’에서 ☆ 후보 담기를 눌러 보세요.</div>`;$("cmpBtn").hidden=true;$("cmpOut").innerHTML="";return}
+  setHTML(el,S.cands.map(x=>{const c=byId(x.churchId);if(!c)return "";return `<article class="card">
     <div class="row"><label class="row" style="gap:6px;font-size:13.5px"><input type="checkbox" data-pick="${esc(c.id)}" ${S.cmpSel.has(c.id)?"checked":""}> 비교에 넣기</label><span class="denom">${esc(c.denom)}</span></div>
     <h3>${esc(c.name)}</h3><p class="addr">${esc([c.sido,c.sigungu,c.address].filter(Boolean).join(" "))}</p>
     <form class="form" data-visit="${esc(x.id)}"><p class="label" style="margin:0">탐방 기록</p>
       <div class="two"><label>방문한 날<input type="date" name="visit" value="${esc(x.visit)}"></label><label>가족 반응<input name="family" maxlength="60" value="${esc(x.family)}" placeholder="예: 아이들이 좋아함"></label></div>
       <label>예배 분위기·메모<textarea name="memo" rows="2" maxlength="300" placeholder="예: 설교가 따뜻함, 주차 넉넉">${esc(x.memo)}</textarea></label>
       <div class="actions"><button class="btn small primary" type="submit">기록 저장</button><button class="btn small" type="button" data-uncand="${esc(c.id)}">후보에서 빼기</button><a class="btn small" href="${naver(c)}" target="_blank" rel="noopener">길찾기</a></div>
-    </form></article>`}).join("");
+    </form></article>`}).join(""),()=>{if(!$("v-mine").hidden)renderMine()});
   $("cmpBtn").hidden=false;$("cmpBtn").textContent=`고른 교회 비교하기 (${S.cmpSel.size}곳)`;
 }
 $("candList").addEventListener("change",e=>{const p=e.target.dataset.pick;if(!p)return;if(e.target.checked){if(S.cmpSel.size>=3){e.target.checked=false;toast("비교는 세 곳까지 할 수 있어요");return}S.cmpSel.add(p)}else S.cmpSel.delete(p);$("cmpBtn").textContent=`고른 교회 비교하기 (${S.cmpSel.size}곳)`});
