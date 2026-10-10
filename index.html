@@ -1935,7 +1935,7 @@ $("imp").oninput=()=>{if(pendingImport){pendingImport=null;$("impMsg").textConte
 S.prefs=ls("jk-prefs")||{};
 
 getJSON("dir/denoms.json").then(j=>{if(j){S.denoms=j.items;$("denomSource").textContent=`교단 목록: ${j.source} · ${j.items.length}개`;fillDenomForm();render()}});
-getJSON("dir/index.json").then(ix=>{S.dirIndex=ix?ix.files:[];return ix}).then(ix=>Promise.all((ix?ix.files:[]).map(f=>getJSON(f.file).then(j=>j?j.rows.map((r,i)=>({id:`${j.denomId}-${i}`,presbytery:j.pres[r[0]]||"",name:r[1],sido:r[2],sigungu:r[3],address:r[4],phone:r[5],website:r[6],lat:r[7],lng:r[8],approx:r[9]?"dong":"sgg",denom:j.denom,verified:true,sample:false,services:[],tags:[],source:j.source})):[])))).then(async parts=>{
+getJSON("dir/index.json").then(ix=>{S.dirIndex=ix?ix.files:[];return ix}).then(ix=>Promise.all((ix?ix.files:[]).map(f=>getJSON(f.file).then(j=>j?j.rows.map((r,i)=>({id:`${j.denomId}-${i}`,presbytery:j.pres[r[0]]||"",name:r[1],sido:r[2],sigungu:r[3],address:r[4],phone:r[5],website:r[6],lat:r[7],lng:r[8],approx:r[9]===2?null:(r[9]?"dong":"sgg"),_geo:r[9]===2?1:0,denom:j.denom,verified:true,sample:false,services:[],tags:[],source:j.source})):[])))).then(async parts=>{
   // 정보 수정: dir/fixes.json 에 교회 ID별로 고친 값을 적으면 명부 위에 덮어씁니다. ("숨김":true 이면 목록에서 뺍니다.)
   const fx=await getJSON("dir/fixes.json").catch(()=>null)||{};
   // 새로 승인된 교회: dir/added.json (운영자 자동 처리기가 승인 때 채웁니다)
