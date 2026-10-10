@@ -1555,10 +1555,11 @@ INFO.home=()=>`<nav class="dnav">
   <button data-page="heresy"><span class="i">⚠</span><span>이단 현황과 예방<small>알아두면 좋은 수칙, 교단 결의 원문</small></span>›</button>
   <button data-report="1"><span class="i">🚨</span><span>이단 교회 신고 센터<small>의심되는 교회·모임을 알려 주세요</small></span>›</button>
   <button data-goreg="1"><span class="i">⛪</span><span>우리 교회 등록 신청<small>목록에 없는 교회를 신청해요</small></span>›</button>
+  <button data-feedback="1"><span class="i">💬</span><span>의견 보내기<small>불편한 점, 좋았던 점, 바라는 기능을 알려 주세요</small></span>›</button>
   <button data-page="data"><span class="i">ⓘ</span><span>수록 교단과 자료 출처<small>어떤 명부로 만들었는지</small></span>›</button>
 </nav>
 <div class="verse">예수께서 이르시되 내가 곧 길이요 진리요 생명이니 나로 말미암지 않고는 아버지께로 올 자가 없느니라<cite>요한복음 14:6 (개역개정)</cite></div>
-<p class="muted" style="font-size:12px"><a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a><br>ⓒ2026 Barista of Soul, All Rights Reserved.<br>무단 복제 및 배포를 금합니다.</p>`;
+<p class="muted" style="font-size:12px"><a href="privacy.html" target="_blank" rel="noopener">개인정보처리방침</a><br>ⓒ2026 Barista of Soul, All Rights Reserved.<br>무단 복제 및 배포를 금합니다.<br>화면 버전 ${APP_VER}</p>`;
 INFO.about=()=>`<div class="info view">
   <p><b>주께로</b>는 ‘주님께로’ 이끄는 길이라는 뜻입니다. 사는 동네, 이사 갈 동네, 멀리 있는 가족과 친구가 사는 동네에서 <b>바른 교회</b>를 쉽게 찾고 소개하도록 돕습니다.</p>
   <h3>왜 만들었나요</h3>
@@ -1629,7 +1630,7 @@ $("q").oninput=e=>{S.q=e.target.value.trim();render()};
 $("sidoSel").onchange=e=>{S.sido=e.target.value;S.region="";render()};
 $("sggSel").onchange=e=>{S.region=e.target.value;render()};
 $("denomSel").onchange=e=>{S.denom=e.target.value;render()};
-$("gps").onclick=()=>{const m=$("gpsMsg");const fail=()=>{m.hidden=false;m.textContent="이 화면에서는 위치 권한을 쓸 수 없어요. 동네 이름으로 검색해 주세요. (앱 버전에서 GPS 찾기가 들어갑니다.)"};if(!navigator.geolocation)return fail();try{navigator.geolocation.getCurrentPosition(()=>{m.hidden=false;m.textContent="위치를 확인했어요. 거리순 정렬은 교회 좌표가 등록되면 적용됩니다."},fail,{timeout:6000})}catch(e){fail()}};
+$("gps").onclick=()=>{$("gpsMsg").hidden=true;setMode("near")};
 $("list").addEventListener("click",async e=>{
   const t=e.target.closest("button,a");if(!t)return;
   if(t.id==="moreBtn"){S.shown+=30;render();return}
@@ -1779,6 +1780,7 @@ $("regForm").onsubmit=async e=>{
 // ---------- 요청함 (등록 신청·정보 수정·이단 신고) ----------
 const TYPES={register:"등록 신청",fix:"정보 수정",report:"이단 신고"};
 const MAILTO="reau5789@daum.net";
+const APP_VER="v14 (2026-10-10)";
 function mailText(x){
   const L=[];
   if(x.type==="register"){const c=x.church;L.push("[교회 등록 신청]","교회 이름: "+c.name,"교단: "+c.denom,"노회·지방회: "+(c.presbytery||"-"),"주소: "+[c.sido,c.sigungu,c.address].filter(Boolean).join(" "),"예배 시간: "+((c.services||[]).map(s=>s.label+" "+s.time).join(", ")||"-"),"담임목사: "+(c.pastor||"-"),"전화: "+(c.phone||"-"),"홈페이지: "+(c.website||"-"),"유튜브: "+(c.youtube||"-"),"특징: "+((c.tags||[]).join(", ")||"-"))}
@@ -1903,6 +1905,23 @@ function openFix(id){
     await submitInbox({type:"fix",title:c.name,churchId:c.id,church:{name:c.name,denom:c.denom,sido:c.sido,sigungu:c.sigungu,address:c.address,phone:c.phone||"",website:c.website||"",youtube:c.youtube||""},changes:g,fields,detail,who:v("fx-who"),contact:v("fx-contact")})};
 }
 const REASONS=["신분을 숨기고 접근","성경공부를 비밀로 하라고 함","특정 인물을 재림주·보혜사로 믿음","가족·교회와 멀어지게 함","과도한 헌금·시간 요구","교단 결의 단체와 관련","기타"];
+// 테스터·사용자 의견 보내기 — 메일 앱으로 운영자에게 보냅니다 (보낸 의견은 업데이트에 반영)
+function openFeedback(){
+  openSheet(`<h2>의견 보내기 💬</h2><p class="muted">써 보시면서 느낀 점을 짧게라도 알려 주세요. 보내 주신 의견으로 주께로를 고쳐 나갑니다.</p>
+  <form class="form" id="fbForm">
+    <label>어떤 의견인가요?<select id="fb-kind"><option>불편하거나 안 되는 점</option><option>좋았던 점</option><option>있었으면 하는 기능</option><option>기타</option></select></label>
+    <label>내용<textarea id="fb-text" rows="5" required placeholder="예: 우리 동네 지도에서 교회 이름이 겹쳐 보여요"></textarea></label>
+    <label>이름 (선택)<input id="fb-who" maxlength="30"></label>
+    <p class="msg" id="fbMsg" hidden></p>
+    <div class="actions"><button class="btn primary" type="submit">메일로 보내기</button><button class="btn" type="button" id="fbCopy">내용 복사</button><button class="btn" type="button" id="sheetCancel">닫기</button></div>
+  </form>`);
+  $("sheetCancel").onclick=closeSheet;
+  const body=()=>["[주께로 의견] "+$("fb-kind").value,"",$("fb-text").value.trim(),"","보낸 분: "+($("fb-who").value.trim()||"-"),"화면 버전: "+APP_VER,"기기: "+navigator.userAgent.slice(0,120)].join("\n");
+  $("fbCopy").onclick=async()=>{const m=$("fbMsg");m.hidden=false;m.textContent=(await copy(body()))?"복사했어요. 카카오톡 등으로 운영자에게 보내 주셔도 됩니다.":"복사하지 못했어요. 내용을 길게 눌러 복사해 주세요."};
+  $("fbForm").onsubmit=e=>{e.preventDefault();if(!$("fb-text").value.trim())return;
+    location.href=`mailto:${MAILTO}?subject=${encodeURIComponent("[주께로 의견] "+$("fb-kind").value)}&body=${encodeURIComponent(body())}`;
+    const m=$("fbMsg");m.hidden=false;m.textContent="메일 앱이 열리면 ‘보내기’를 눌러 주세요. 메일 앱이 없으면 ‘내용 복사’를 써 주세요."};
+}
 function openReport(){
   openSheet(`<h2>🚨 이단 교회 신고</h2>
   <p class="muted">이단으로 의심되는 교회나 모임을 알려 주세요. 신고는 메일로 <b>운영자에게만</b> 전달되며, 교단 결의와 사실을 확인한 뒤 주께로 목록에서 빼거나 안내에 반영합니다.</p>
@@ -1922,6 +1941,7 @@ function openReport(){
 }
 document.addEventListener("click",e=>{
   const f=e.target.closest("[data-fix]");if(f){openFix(f.dataset.fix);return}
+  if(e.target.closest("[data-feedback]")){if(!$("drawer").hidden)closeDrawer();openFeedback();return}
   if(e.target.closest("[data-report]")){if(!$("drawer").hidden)closeDrawer();openReport();return}
   if(e.target.closest("[data-goreg]")){if(!$("drawer").hidden)closeDrawer();showView("reg");setTimeout(()=>$("r-name").focus(),50);return}
 });
