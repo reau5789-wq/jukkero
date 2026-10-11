@@ -823,6 +823,22 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .person{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:8px 12px;text-align:left;cursor:pointer;font:inherit;color:var(--ink)}
 .person small{display:block;color:var(--muted);font-size:12px}
 .person[aria-pressed="true"]{border-color:var(--soul);background:var(--soul-soft);color:var(--soul)}
+.p-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.p-filter{display:flex;gap:6px;flex-wrap:wrap}
+.p-filter button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font:500 13px var(--f-body);cursor:pointer}
+.p-filter button[aria-pressed="true"]{background:var(--soul);border-color:var(--soul);color:#fff}
+.plist{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto}
+.prow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:8px 8px 8px 12px}
+.prow[aria-current="true"]{border-color:var(--soul);background:var(--soul-soft)}
+.prow .pick{flex:1;min-width:0;border:0;background:none;text-align:left;font:inherit;color:var(--ink);cursor:pointer;padding:0}
+.prow .pick b{display:block;font-size:15px}
+.prow .pick small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pst{flex:none;border:0;border-radius:999px;padding:6px 10px;font:600 12px var(--f-body);cursor:pointer;white-space:nowrap}
+.pst.pray{background:var(--soul-soft);color:var(--soul)}
+.pst.attend{background:#e3f1e7;color:#1f6b3a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .pst.attend{background:#1f3a29;color:#9fd8b1}}
+:root[data-theme="dark"] .pst.attend{background:#1f3a29;color:#9fd8b1}
+.ngroup{margin:14px 2px 6px;font:600 14px var(--f-body);color:var(--muted)}
 .stages{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
 .stage{border:0;border-radius:8px;padding:6px 2px;font:500 11.5px var(--f-body);background:var(--ground);color:var(--muted);cursor:pointer;line-height:1.3}
 .stage.done{background:var(--soul-soft);color:var(--soul)}
@@ -1113,8 +1129,11 @@ const OFFICIAL={"예장통합":"https://new.pck.or.kr/address.php","예장합동
 const LEGACY={"구세군":"한국구세군","기독교대한하나님의성회":"기독교대한하나님의성회 (agk)"};
 const TAGS=["주차","주일학교","청년부","새벽예배","수요예배","노인부","장애인부서","외국인예배"];
 const SLOTS=[["","전체"],["am","주일 오전"],["pm","주일 오후"],["dawn","새벽기도"],["wed","수요예배"],["youth","청년부"],["next","다음세대"]];
-const STAGES=["기도 중","연락함","교회 소개함","첫 방문","정착"];
-const S={mode:null,q:"",sido:"",region:"",denom:"",tags:new Set(),slot:"",shown:30,churches:[],dbChurches:[],dirChurches:[],denoms:[],notes:[],cands:[],prefs:{},db:null,uid:null,admin:false,person:null,composer:null,cmpSel:new Set()};
+const STAGES=["기도 중","연락함","교회 소개함","첫 방문","출석 중"];
+const ATTEND=4; // 마지막 단계 = 건강한 교회에 출석 중
+const isAttend=n=>(n.stage||0)>=ATTEND;
+const sortPeople=a=>[...a].sort((x,y)=>(isAttend(x)-isAttend(y))||(y.at-x.at));
+const S={mode:null,q:"",sido:"",region:"",denom:"",tags:new Set(),slot:"",shown:30,churches:[],dbChurches:[],dirChurches:[],denoms:[],notes:[],cands:[],prefs:{},db:null,uid:null,admin:false,person:null,composer:null,cmpSel:new Set(),pFilter:"all",addPerson:false};
 const $=id=>document.getElementById(id);
 const getJSON=f=>fetch(f).then(r=>r.ok?r.json():null).catch(()=>null);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1282,13 +1301,21 @@ function renderModePanel(list){
     if(setHTML(el,`<div class="panel"><p style="margin:0;font-size:14px">담은 후보 <b>${S.cands.length}곳</b>${S.cands.length?" · "+S.cands.slice(0,3).map(x=>esc((byId(x.churchId)||{}).name||"")).join(", ")+(S.cands.length>3?" 외":""):""}</p><button class="btn primary" id="goCmp" ${S.cands.length<2?"disabled":""}>후보 비교하러 가기</button>${!S.uid?'<p class="msg">로그인한 상태에서 후보가 저장됩니다.</p>':""}</div>`,render))
     $("goCmp").onclick=()=>showView("mine");
   }else if(S.mode==="share"){
-    const ppl=S.notes.length?`<div class="people">${S.notes.map(n=>`<button class="person" data-person="${esc(n.id)}" aria-pressed="${S.person&&S.person.id===n.id}">${esc(n.name)}<small>${esc(n.region)} · ${STAGES[n.stage||0]}</small></button>`).join("")}</div>`:`<p class="muted">아직 전도 노트에 담은 사람이 없어요. 아래에서 바로 적어 보세요.</p>
-      <form class="form" id="quickPerson"><div class="two"><input id="qp-name" required maxlength="30" placeholder="이름(별칭)"><input id="qp-region" required maxlength="40" placeholder="사는 동네 (예: 부산 해운대구)"></div><button class="btn soul" type="submit">담고 그 동네 교회 찾기</button></form>`;
+    const nPray=S.notes.filter(n=>!isAttend(n)).length,nAtt=S.notes.length-nPray;
+    const shown=sortPeople(S.notes).filter(n=>S.pFilter==="all"||(S.pFilter==="attend")===isAttend(n));
+    const form=`<form class="form" id="quickPerson"><div class="two"><input id="qp-name" required maxlength="30" placeholder="이름(별칭)"><input id="qp-region" required maxlength="40" placeholder="사는 동네 (예: 부산 해운대구)"></div><div class="actions"><button class="btn soul" type="submit">담고 그 동네 교회 찾기</button>${S.notes.length?'<button class="btn" type="button" id="qp-cancel">취소</button>':""}</div></form>`;
+    const ppl=S.notes.length?`<div class="p-filter"><button data-pf="all" aria-pressed="${S.pFilter==="all"}">전체 ${S.notes.length}</button><button data-pf="pray" aria-pressed="${S.pFilter==="pray"}">🙏 기도 중 ${nPray}</button><button data-pf="attend" aria-pressed="${S.pFilter==="attend"}">⛪ 출석 중 ${nAtt}</button></div>
+      ${shown.length?`<div class="plist">${shown.map(n=>{const a=isAttend(n);return `<div class="prow" aria-current="${!!(S.person&&S.person.id===n.id)}"><button class="pick" data-person="${esc(n.id)}"><b>${esc(n.name)}</b><small>${esc(n.region)}${a?"":" · "+STAGES[n.stage||0]}</small></button><button class="pst ${a?"attend":"pray"}" data-pst="${esc(n.id)}" title="눌러서 바꾸기">${a?"⛪ 출석 중":"🙏 기도 중"}</button></div>`}).join("")}</div>`:`<p class="muted">${S.pFilter==="attend"?"아직 교회에 출석 중인 분이 없어요. 함께 기도해요.":"기도 중인 분이 없어요."}</p>`}
+      ${S.addPerson?form:""}`:`<p class="muted">아직 전도 노트에 담은 사람이 없어요. 아래에서 바로 적어 보세요.</p>${form}`;
     let comp="";
     if(S.composer){const c=byId(S.composer);if(c){comp=`<div class="panel" style="border-color:var(--soul)"><h2>${S.person?esc(S.person.name)+"님께 보낼 메시지":"소개 메시지"}</h2><p>필요하면 고친 뒤 복사해 카톡이나 문자로 보내세요.</p><textarea class="msgbox" id="msgbox">${esc(buildMsg(c,S.person))}</textarea><div class="actions"><button class="btn soul" id="copyMsg">메시지 복사</button>${S.person?`<button class="btn" id="saveIntro">노트에 ‘교회 소개함’으로 기록</button>`:""}<button class="btn" id="closeMsg">닫기</button></div></div>`}}
-    if(!setHTML(el,`<div class="panel"><p class="label" style="margin:0">누구에게 소개할까요?</p>${ppl}${S.person?`<p class="muted">${esc(S.person.name)}님 동네(${esc(S.person.region)})의 교회입니다. 교회를 골라 ‘소개’를 누르세요.</p>`:""}</div>${comp}`,render))return;
+    if(!setHTML(el,`<div class="panel"><div class="p-head"><p class="label" style="margin:0">누구에게 소개할까요?</p>${S.notes.length&&!S.addPerson?'<button class="btn small soul" id="addPersonBtn">+ 사람 추가</button>':""}</div>${ppl}${S.person?`<p class="muted">${esc(S.person.name)}님 동네(${esc(S.person.region)})의 교회입니다. 교회를 골라 ‘소개’를 누르세요.</p>`:""}</div>${comp}`,render))return;
     el.querySelectorAll("[data-person]").forEach(b=>b.onclick=()=>pickPerson(b.dataset.person));
-    const qp=$("quickPerson");if(qp)qp.onsubmit=async e=>{e.preventDefault();const nm=$("qp-name").value.trim(),rg=$("qp-region").value.trim();if(!nm||!rg)return;if(document.activeElement)document.activeElement.blur();const id=await addNote(nm,rg,"");if(id)pickPerson(id)};
+    el.querySelectorAll("[data-pst]").forEach(b=>b.onclick=()=>togglePersonStatus(b.dataset.pst));
+    el.querySelectorAll("[data-pf]").forEach(b=>b.onclick=()=>{S.pFilter=b.dataset.pf;render()});
+    if($("addPersonBtn"))$("addPersonBtn").onclick=()=>{S.addPerson=true;render();setTimeout(()=>$("qp-name")&&$("qp-name").focus(),0)};
+    if($("qp-cancel"))$("qp-cancel").onclick=()=>{if(document.activeElement)document.activeElement.blur();S.addPerson=false;setTimeout(render,0)};
+    const qp=$("quickPerson");if(qp)qp.onsubmit=async e=>{e.preventDefault();const nm=$("qp-name").value.trim(),rg=$("qp-region").value.trim();if(!nm||!rg)return;if(document.activeElement)document.activeElement.blur();const id=await addNote(nm,rg,"");if(id){S.addPerson=false;if(S.pFilter==="attend")S.pFilter="all";pickPerson(id)}};
     if($("copyMsg")){
       $("copyMsg").onclick=async()=>{const t=$("msgbox").value;if(await copy(t))toast("메시지를 복사했어요. 카톡에 붙여 넣으세요");else{$("msgbox").select();toast("복사가 막혀 있어요. 선택된 글을 길게 눌러 복사하세요")}};
       $("closeMsg").onclick=()=>{S.composer=null;render()};
@@ -1573,9 +1600,9 @@ INFO.about=()=>`<div class="info view">
 INFO.guide=()=>`<div class="info view">
   <div class="guide"><b>📍 우리 동네 교회 찾기</b><p>‘내 위치’ 옆 칸에 동네 이름(예: 화도읍)을 넣어 내 위치를 정하세요. 지도의 ✝ 또는 교회 이름을 누르면 교회 정보와 가까운 교회 목록이 나오고, ‘← 지도로 돌아가기’로 돌아옵니다. 지도를 확대하면 교회 이름이 보입니다.</p></div>
   <div class="guide"><b>🏠 교회찾기</b><p>시·도와 시·군·구, 교단, 예배·모임으로 교회를 찾습니다. 마음에 드는 교회는 ‘☆ 후보 담기’로 모아 두세요.</p></div>
-  <div class="guide"><b>🙏 사람에서 시작</b><p>전도할 사람을 고르면 그 사람의 동네 교회가 나옵니다. ‘○○님께 소개’를 누르면 교회 정보와 지도 링크가 담긴 메시지가 만들어지고, 복사해 카톡이나 문자로 보낼 수 있습니다.</p></div>
+  <div class="guide"><b>🙏 사람에서 시작</b><p>‘+ 사람 추가’로 여러 사람을 계속 담을 수 있고, 담은 사람은 ‘기도 중 / 출석 중’으로 나뉘어 목록에 보입니다. 오른쪽 상태 버튼을 누르면 바뀝니다. 전도할 사람을 고르면 그 사람의 동네 교회가 나옵니다. ‘○○님께 소개’를 누르면 교회 정보와 지도 링크가 담긴 메시지가 만들어지고, 복사해 카톡이나 문자로 보낼 수 있습니다.</p></div>
   <div class="guide"><b>⭐ 내 교회·후보</b><p>담아 둔 후보를 세 곳까지 나란히 비교하고, 방문한 날과 예배 분위기, 가족 반응을 기록합니다. 교회를 옮길 때의 이명 절차도 여기서 봅니다.</p></div>
-  <div class="guide"><b>♡ 전도 노트</b><p>전도할 사람과 기도 제목을 적고 ‘기도 중 → 연락함 → 교회 소개함 → 첫 방문 → 정착’ 단계를 눌러 기록합니다. 나만 볼 수 있습니다.</p></div>
+  <div class="guide"><b>♡ 전도 노트</b><p>전도할 사람과 기도 제목을 적고 ‘기도 중 → 연락함 → 교회 소개함 → 첫 방문 → 출석 중’ 단계를 눌러 기록합니다. 건강한 교회에 정착하면 ‘출석 중’으로, 아직이면 ‘기도 중’으로 나뉘어 보입니다. 나만 볼 수 있습니다.</p></div>
   <div class="guide"><b>✝ 등록</b><p>목록에 없는 우리 교회를 등록 신청하거나, 예배 시간을 보내 주세요. 확인 후 목록과 시간표에 반영됩니다.</p></div>
   <div class="guide"><b>✎ 정보 수정 요청</b><p>교회 카드 아래 ‘정보가 틀렸나요? 수정 요청’을 누르면 잘못된 부분과 올바른 내용을 운영자에게 보낼 수 있습니다. 요청은 메일로 운영자에게 전달됩니다.</p></div>
   <div class="guide"><b>🚨 이단 교회 신고 센터</b><p>삼선 메뉴나 ‘이단 현황과 예방’에서 의심되는 교회·모임을 신고할 수 있습니다. 신고는 메일로 운영자에게만 전달됩니다.</p></div>
@@ -1664,6 +1691,11 @@ async function addNote(name,region,memo){
   const c=col();if(!c){toast("로그인한 상태에서만 노트를 쓸 수 있어요");return null}
   try{const ref=await c.add({kind:"note",name,region,memo,stage:0,churchId:"",at:Date.now()});toast("전도 노트에 담았어요");return ref.id}catch(e){toast("저장하지 못했어요. 공유 권한(참여자 이상)이 필요합니다.");return null}
 }
+async function togglePersonStatus(id){
+  const n=S.notes.find(x=>x.id===id);if(!n)return;
+  if(isAttend(n)){await updateNote(id,{stage:Math.min(n.prevStage??0,ATTEND-1)});toast(`${n.name}님을 ‘기도 중’으로 옮겼어요`)}
+  else{await updateNote(id,{stage:ATTEND,prevStage:n.stage||0});toast(`${n.name}님이 교회에 출석 중이에요. 감사합니다! 🙏`)}
+}
 async function updateNote(id,patch){const c=col();if(!c)return;try{await c.doc(id).update(patch)}catch(e){toast("저장하지 못했어요")}}
 
 // ---------- 내 교회·후보 ----------
@@ -1699,7 +1731,8 @@ $("cmpBtn").onclick=()=>{
 function renderNotes(){
   const el=$("notes");
   if(!S.uid){el.innerHTML='<div class="empty"><strong>로그인하면 노트를 쓸 수 있어요</strong>전도 노트는 나만 볼 수 있게 저장됩니다.</div>';return}
-  el.innerHTML=S.notes.length?S.notes.map(n=>{const c=byId(n.churchId);const st=n.stage||0;return `<article class="card">
+  const sorted=sortPeople(S.notes),firstAtt=sorted.findIndex(isAttend);
+  el.innerHTML=S.notes.length?sorted.map((n,i)=>{const c=byId(n.churchId);const st=n.stage||0;return `${i===0&&!isAttend(n)?`<p class="ngroup">🙏 기도 중 ${firstAtt<0?sorted.length:firstAtt}명</p>`:""}${i===firstAtt?`<p class="ngroup">⛪ 출석 중 ${sorted.length-firstAtt}명</p>`:""}<article class="card">
     <div class="row" style="justify-content:space-between"><h3>${esc(n.name)}</h3><span class="tag">${esc(n.region)}</span></div>
     <div class="stages">${STAGES.map((s,i)=>`<button class="stage ${i<st?"done":i===st?"now":""}" data-stage="${i}" data-note="${esc(n.id)}">${s}</button>`).join("")}</div>
     ${c?`<p style="margin:0;font-size:14px">소개한 교회 · <b>${esc(c.name)}</b> <span class="muted">${esc(c.denom)}</span></p>`:'<p class="muted">소개할 교회를 아직 정하지 않았어요.</p>'}
