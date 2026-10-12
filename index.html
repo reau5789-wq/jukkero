@@ -1135,7 +1135,7 @@ const isAttend=n=>(n.stage||0)>=ATTEND;
 const sortPeople=a=>[...a].sort((x,y)=>(isAttend(x)-isAttend(y))||(y.at-x.at));
 const S={mode:null,q:"",sido:"",region:"",denom:"",tags:new Set(),slot:"",shown:30,churches:[],dbChurches:[],dirChurches:[],denoms:[],notes:[],cands:[],prefs:{},db:null,uid:null,admin:false,person:null,composer:null,cmpSel:new Set(),pFilter:"all",addPerson:false};
 const $=id=>document.getElementById(id);
-const getJSON=f=>fetch(f).then(r=>r.ok?r.json():null).catch(()=>null);
+const getJSON=f=>fetch(f,/(fixes|added)\.json$/.test(f)?{cache:"no-store"}:undefined).then(r=>r.ok?r.json():null).catch(()=>null);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2400)}
 function ls(k,v){try{if(v===undefined)return JSON.parse(localStorage.getItem(k)||"null");localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
