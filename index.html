@@ -784,6 +784,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--lamp);outline-of
 .tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--muted)}
 .actions{display:flex;gap:6px;flex-wrap:wrap}
 a.btn{text-decoration:none;display:inline-flex;align-items:center}
+.yt-ico{flex:none;margin-right:6px}
 .empty{background:var(--surface);border:1px dashed var(--line);border-radius:16px;padding:22px;text-align:center;color:var(--muted);font-size:14px}
 .empty strong{display:block;color:var(--ink);font-size:17px;margin-bottom:4px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
@@ -1228,8 +1229,8 @@ function card(c){
   const my=S.prefs.myChurch===c.id, cand=S.cands.some(x=>x.churchId===c.id);
   let act=`<button class="btn small" data-onmap="${esc(c.id)}">🗺 지도에서 보기</button><a class="btn small" href="${naver(c)}" target="_blank" rel="noopener">길찾기</a>`;
   if(c.phone)act+=`<button class="btn small" data-copy="${esc(c.phone)}">☎ ${esc(c.phone)}</button>`;
-  if(/^https?:\/\//.test(c.website||""))act+=`<a class="btn small" href="${esc(c.website)}" target="_blank" rel="noopener">홈페이지</a>`;
-  if(/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(c.youtube||""))act+=`<a class="btn small" href="${esc(c.youtube)}" target="_blank" rel="noopener">▶ 유튜브</a>`;
+  if(/^https?:\/\//.test(c.website||""))act+=`<a class="btn small" href="${esc(c.website)}" target="_blank" rel="noopener">🏠 홈페이지</a>`;
+  if(/^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//.test(c.youtube||""))act+=`<a class="btn small" href="${esc(c.youtube)}" target="_blank" rel="noopener"><svg class="yt-ico" viewBox="0 0 28 20" width="22" height="16" aria-hidden="true"><rect width="28" height="20" rx="5" fill="#FF0000"/><path d="M11 5.5v9l8-4.5z" fill="#fff"/></svg>유튜브</a>`;
   if(S.mode!=="choose"&&S.mode!=="share")act+=`<button class="btn small${my?" on":""}" data-my="${esc(c.id)}">${my?"★ 내 교회":"☆ 내 교회로"}</button>`;
   if(S.mode==="choose")act=`<button class="btn small${cand?" on":""}" data-cand="${esc(c.id)}">${cand?"★ 후보에 담김":"☆ 후보 담기"}</button>`+act;
   if(S.mode==="share")act=`<button class="btn small soul" data-share="${esc(c.id)}">${S.person?esc(S.person.name)+"님께 소개":"소개 메시지 만들기"}</button>`+act;
